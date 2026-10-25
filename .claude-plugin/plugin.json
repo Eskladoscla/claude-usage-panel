@@ -1,0 +1,9 @@
+{
+  "name": "usage-panel",
+  "version": "0.1.0",
+  "description": "Panel de límites de uso de Claude Code (5 h, semanal, Fable) con los tokens gastados en cada ventana y una estimación de su capacidad",
+  "types": "./types/index.d.ts",
+  "author": {
+    "name": "Eskladoscla"
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "name": "claude-usage-panel",
+  "owner": {
+    "name": "Eskladoscla"
+  },
+  "description": "Panel de límites de uso y tokens para Claude Code",
+  "plugins": [
+    {
+      "name": "usage-panel",
+      "source": "./"
+    }
+  ]
+}
