@@ -1,71 +1,72 @@
 # usage-panel
 
-Mod de [Claude Code](https://claude.com/claude-code) que abre un panel con los **límites de
-uso** de tu suscripción (ventana de 5 h, semanal de 7 días y semanal de Fable): el
-porcentaje, una barra, cuándo se reinicia cada ventana y los **tokens gastados** en ella,
-junto a una estimación de cuántos admite.
+A [Claude Code](https://claude.com/claude-code) mod that opens a pane with your subscription's
+**usage limits** (5-hour window, 7-day weekly and Fable weekly): the percentage, a bar, when
+each window resets and the **tokens used** in it, together with an estimate of how many it
+allows.
 
 ```
-Sesión (5 h)  42%
+Session (5h)  42%
 ████████████████░░░░░░░░░░░░░░░░░░░░░░░░
-Se reinicia en 3 h
-Gastados/Previstos: 18,4 M / 43,1 M
+Resets in 3 h
+Used/Expected: 18.4 M / 43.1 M
 ```
 
-## Instalar
+## Install
 
-Necesitas `python3` en el `PATH` (solo usa la biblioteca estándar).
+You need `python3` on your `PATH` (it only uses the standard library).
 
-En la línea de comandos de una sesión de Claude Code en el terminal:
+From the prompt of a Claude Code session in the terminal:
 
 ```
 /plugin install usage-panel --marketplace Eskladoscla/claude-usage-panel
 ```
 
-Responde `y` para añadir el marketplace y elige el ámbito (el de usuario, para todas tus
-sesiones). Desde la shell:
+Answer `y` to add the marketplace and pick the scope (user scope, for all your sessions).
+From the shell:
 
 ```sh
 claude plugin install usage-panel --marketplace Eskladoscla/claude-usage-panel
 ```
 
-En la app de escritorio: **+** junto a la caja del mensaje → Plugins → Add marketplace con
+In the desktop app: **+** next to the message box → Plugins → Add marketplace with
 `Eskladoscla/claude-usage-panel` → Add plugin.
 
-## Uso
+## Usage
 
-Escribe `/usage-panel` en una sesión para abrir el panel. Los porcentajes llegan tras el
-primer turno; los tokens se recalculan como mucho una vez por minuto.
+Type `/usage-panel` in a session to open the pane. The percentages arrive after the first
+turn; the tokens are recalculated at most once per minute.
 
-## Cómo funciona
+## How it works
 
-- **Porcentajes**: cada vez que Claude Code informa de tus límites y alguno cambia, el mod
-  guarda una línea en `~/.claude/usage-ledger/samples/<sesión>.jsonl`.
-- **Tokens**: `scripts/ledger.py` lee de forma incremental tus transcripciones locales
-  (`~/.claude/projects/`) y suma los tokens por ventana en `~/.claude/usage-ledger/ledger.db`
+- **Percentages**: every time Claude Code reports your limits and one of them changes, the mod
+  appends a line to `~/.claude/usage-ledger/samples/<session>.jsonl`.
+- **Tokens**: `scripts/ledger.py` reads your local transcripts (`~/.claude/projects/`)
+  incrementally and sums the tokens per window into `~/.claude/usage-ledger/ledger.db`
   (SQLite).
-- **Previstos**: tokens ponderados ÷ porcentaje alcanzado en la última ventana que llegó al
-  tope. Es una **estimación**: Anthropic no publica la fórmula de la cuota, y los pesos por
-  tipo de token (`~/.claude/usage-ledger/weights.json`, se crea al primer uso y se puede
-  editar) se toman de la proporción de precios de la API.
-- Lo que gastas fuera de esta máquina (claude.ai, otro ordenador) sube el porcentaje sin
-  dejar tokens aquí, así que la capacidad sale a la baja en esas ventanas.
+- **Expected**: weighted tokens ÷ the percentage reached in the last window that hit the cap.
+  It is an **estimate**: Anthropic does not publish the quota formula, and the weights per
+  token type (`~/.claude/usage-ledger/weights.json`, created on first use and editable) are
+  taken from the ratio of API prices.
+- Usage outside this machine (claude.ai, another computer) raises the percentage without
+  leaving tokens here, so the capacity comes out low for those windows.
 
-Todo se queda en tu máquina: el mod no usa red ni tu token de sesión, nunca bloquea nada y,
-si falla, lo anota en `~/.claude/usage-ledger/errors.log` y la sesión sigue.
+Everything stays on your machine: the mod uses no network and not your session token, never
+blocks anything and, if it fails, it logs to `~/.claude/usage-ledger/errors.log` and the
+session carries on.
 
-## Informe detallado
+## Detailed report
 
-Desde la carpeta del plugin instalado (`--base` cambia la carpeta de datos):
+From the installed plugin's folder (`--base` changes the data folder):
 
 ```sh
-python3 -I scripts/ledger.py report --ingest              # todas las ventanas
-python3 -I scripts/ledger.py report --window five_hour    # una sola
+python3 -I scripts/ledger.py report --ingest              # every window
+python3 -I scripts/ledger.py report --window five_hour    # just one
 ```
 
 ## Tests
 
 ```sh
 python3 -I -m unittest discover -s tests   # ledger.py
-claude plugin test .                       # el mod
+claude plugin test .                       # the mod
 ```

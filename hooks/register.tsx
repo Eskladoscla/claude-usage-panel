@@ -3,44 +3,44 @@ import type { EngineInterface, Register } from 'claude-code'
 
 import type { Limit, WindowTokens } from '../types'
 
-// usage-panel: las tres ventanas de límite (5 h, semanal, Fable) con su barra y, debajo, los tokens
-// gastados en la ventana en curso, sumando todos los proyectos de esta máquina. Los tokens los cuenta
-// scripts/ledger.py (subcomando `window`) desde las transcripciones locales, con sus datos en
-// ~/.claude/usage-ledger; lo gastado en el chat de claude.ai no aparece. Las muestras de porcentaje
-// las registra ./ledger. Solo observa: nunca bloquea ni lanza.
+// usage-panel: the three limit windows (5h, weekly, Fable) with their bar and, below it, the tokens
+// used in the current window, summed across every project on this machine. The tokens are counted by
+// scripts/ledger.py (`window` subcommand) from the local transcripts, with its data in
+// ~/.claude/usage-ledger; usage in the claude.ai chat does not show up. The percentage samples are
+// recorded by the ledger below. Observe-only: it never blocks or throws.
 
-// Registro de muestras: deja constancia de cada lectura de los límites de uso de la cuenta
-// (ventana de 5 h, semanal, semanal por modelo…) para que scripts/ledger.py estime cuántos
-// tokens admite cada ventana. Solo observa: nunca bloquea, nunca lanza, sin red.
+// Sample ledger: records every reading of the account's usage limits (5-hour window, weekly,
+// weekly per model…) so that scripts/ledger.py can estimate how many tokens each window allows.
+// Observe-only: never blocks, never throws, no network.
 //
-// Cada sesión escribe su propio fichero samples/<sessionId>.jsonl: $.fs no tiene
-// «append», y un único fichero compartido con leer-y-reescribir perdería líneas
-// cuando dos sesiones escriben a la vez.
+// Each session writes its own file samples/<sessionId>.jsonl: $.fs has no "append",
+// and a single shared file with read-and-rewrite would lose lines when two sessions
+// write at the same time.
 
 type RawLimit = { kind: string; percentUsed: number; resetsAt?: string; [k: string]: unknown }
 
-// Etiquetas propias (la API de mods no trae display_name). Un kind desconocido se
-// guarda igual, con su nombre como etiqueta.
+// Our own labels (the mod API provides no display_name). An unknown kind is still
+// recorded, with its name as the label.
 const LABELS: Record<string, string> = {
-  five_hour: 'Sesión (5 h)',
-  seven_day: 'Semanal (todos los modelos)',
+  five_hour: 'Session (5h)',
+  seven_day: 'Weekly (all models)',
   seven_day_overage_included: 'Fable limit',
-  seven_day_opus: 'Semanal Opus',
-  seven_day_sonnet: 'Semanal Sonnet',
-  seven_day_cowork: 'Semanal Cowork',
-  seven_day_omelette: 'Semanal omelette',
-  seven_day_oauth_apps: 'Semanal apps OAuth',
-  spend_limit: 'Límite de gasto',
+  seven_day_opus: 'Weekly Opus',
+  seven_day_sonnet: 'Weekly Sonnet',
+  seven_day_cowork: 'Weekly Cowork',
+  seven_day_omelette: 'Weekly omelette',
+  seven_day_oauth_apps: 'Weekly OAuth apps',
+  spend_limit: 'Spend limit',
 }
 const KNOWN = new Set(['kind', 'percentUsed', 'resetsAt'])
-const MAX_BYTES = 3 * 1024 * 1024 // $.fs.read rechaza por encima de 4 MiB
+const MAX_BYTES = 3 * 1024 * 1024 // $.fs.read rejects anything above 4 MiB
 const MAX_ERROR_LINES = 200
 
 type St = {
-  last: Map<string, string> // kind → firma de la última muestra escrita
+  last: Map<string, string> // kind → signature of the last sample written
   base?: string
   file?: string
-  content?: string // copia en memoria del fichero de esta sesión
+  content?: string // in-memory copy of this session's file
   cwd: string
   sessionId: string
   queue: Promise<void>
@@ -53,7 +53,7 @@ async function dir($, st: St): Promise<string> {
     try {
       home = (await $.env.get('HOME')) ?? ''
     } catch {}
-    if (!home) throw new Error('HOME sin definir')
+    if (!home) throw new Error('HOME is not set')
     st.base = `${home}/.claude/usage-ledger`
   }
   return st.base
@@ -72,7 +72,7 @@ async function logError($, st: St, where: string, err: unknown) {
   } catch {}
 }
 
-// Plan de la cuenta (Pro, Max x5, Max x20) leído de ~/.claude.json una vez por sesión; null si no se sabe.
+// Account plan (Pro, Max x5, Max x20) read from ~/.claude.json once per session; null if unknown.
 async function plan($, st: St): Promise<string | null> {
   if (st.plan === undefined) {
     st.plan = null
@@ -89,7 +89,7 @@ async function plan($, st: St): Promise<string | null> {
 
 async function persist($, st: St, rows: string[]) {
   if (!st.file) {
-    st.file = `${await dir($, st)}/samples/${st.sessionId || 'sin-sesion'}.jsonl`
+    st.file = `${await dir($, st)}/samples/${st.sessionId || 'no-session'}.jsonl`
     try {
       st.content = await $.fs.read(st.file)
     } catch {
@@ -146,12 +146,12 @@ async function record($, st: St, limits: readonly RawLimit[] | undefined, source
       )
     }
     if (!rows.length) return
-    // Escrituras en serie: dos medidas seguidas no se pisan el fichero.
+    // Serialized writes: two back-to-back measurements do not clobber the file.
     const run = st.queue.then(() => persist($, st, rows))
     st.queue = run.catch(() => {})
     try {
       await run
-      for (const [k, sig] of sigs) st.last.set(k, sig) // solo lo escrito cuenta como «ya visto»
+      for (const [k, sig] of sigs) st.last.set(k, sig) // only what was written counts as "already seen"
     } catch (err) {
       await logError($, st, 'persist', err)
     }
@@ -160,11 +160,11 @@ async function record($, st: St, limits: readonly RawLimit[] | undefined, source
   }
 }
 
-// Estado de la sesión; el módulo del panel llama a estas dos funciones desde sus hooks
-// (un mod no puede registrar el mismo evento dos veces).
+// Session state; the panel module calls these two functions from its hooks
+// (a mod cannot register the same event twice).
 const st: St = { last: new Map(), cwd: '', sessionId: '', queue: Promise.resolve() }
 
-// Muestra inicial, tras el session.start del motor.
+// Initial sample, after the engine's session.start.
 export async function ledgerStart($: EngineInterface, cwd: string | undefined) {
   try {
     st.cwd = cwd ?? ''
@@ -188,11 +188,11 @@ const updatedAt = atom({ plugin: 'usage-panel', key: 'updatedAt' } as const, 0)
 const error = atom({ plugin: 'usage-panel', key: 'error' } as const, '')
 
 const WINDOWS: readonly { kind: string; label: string }[] = [
-  { kind: 'five_hour', label: 'Sesión (5 h)' },
-  { kind: 'seven_day', label: 'Semanal (7 días)' },
+  { kind: 'five_hour', label: 'Session (5h)' },
+  { kind: 'seven_day', label: 'Weekly (7 days)' },
   { kind: 'seven_day_overage_included', label: 'Fable limit' },
 ]
-const MIN_INTERVAL_MS = 60_000 // la ingesta tarda unos segundos: como mucho una por minuto
+const MIN_INTERVAL_MS = 60_000 // ingestion takes a few seconds: at most once per minute
 
 let running = false
 let lastRun = 0
@@ -207,13 +207,13 @@ async function refresh($: EngineInterface, force = false) {
     const resets = ls.filter((l) => l.resetsAt).map((l) => `${l.kind}=${l.resetsAt}`)
     if (resets.length === 0) return
     const home = await $.env.get('HOME')
-    if (!home) throw new Error('HOME sin definir')
+    if (!home) throw new Error('HOME is not set')
     const r = await $.process.run(
       ['/usr/bin/env', 'python3', '-I', `${$.plugin.root}/scripts/ledger.py`, 'window', '--ingest', ...resets],
       { cwd: home, timeoutMs: 120_000 },
     )
     if (r.exitCode !== 0) {
-      await update($, error, () => `ledger.py salió con ${r.exitCode}`)
+      await update($, error, () => `ledger.py exited with ${r.exitCode}`)
       return
     }
     const parsed = JSON.parse(r.stdout) as Record<string, WindowTokens>
@@ -235,9 +235,9 @@ async function setLimits($: EngineInterface, rl: readonly Limit[] | undefined) {
 }
 
 function fmtTokens(n: number): string {
-  if (n >= 1e9) return `${(n / 1e9).toFixed(2).replace('.', ',')} B`
-  if (n >= 1e6) return `${(n / 1e6).toFixed(1).replace('.', ',')} M`
-  if (n >= 1e3) return `${(n / 1e3).toFixed(1).replace('.', ',')} k`
+  if (n >= 1e9) return `${(n / 1e9).toFixed(2)} B`
+  if (n >= 1e6) return `${(n / 1e6).toFixed(1)} M`
+  if (n >= 1e3) return `${(n / 1e3).toFixed(1)} k`
   return String(n)
 }
 
@@ -245,12 +245,12 @@ function fmtReset(iso: string | undefined, now: number): string {
   if (!iso) return ''
   const ms = Date.parse(iso) - now
   if (!Number.isFinite(ms)) return ''
-  if (ms <= 0) return 'Se reinicia ya'
+  if (ms <= 0) return 'Resets now'
   const h = ms / 3_600_000
-  return h >= 24 ? `Se reinicia en ${Math.round(h / 24)} d` : h >= 1 ? `Se reinicia en ${Math.round(h)} h` : `Se reinicia en ${Math.max(1, Math.round(ms / 60_000))} min`
+  return h >= 24 ? `Resets in ${Math.round(h / 24)} d` : h >= 1 ? `Resets in ${Math.round(h)} h` : `Resets in ${Math.max(1, Math.round(ms / 60_000))} min`
 }
 
-// Casillas llenas y vacías de la barra; la parte llena se pinta en naranja.
+// Full and empty cells of the bar; the full part is drawn in orange.
 function bar(pct: number, width: number): { full: string; empty: string } {
   const full = Math.max(0, Math.min(width, Math.round((pct / 100) * width)))
   return { full: '█'.repeat(full), empty: '░'.repeat(width - full) }
@@ -260,8 +260,8 @@ const ORANGE = '#f97316'
 
 export const register: Register = (on) => {
   on('session.start', async ($, e, next) => {
-    await $.command.register({ name: 'usage-panel', description: 'Abre el panel de límites de uso con los tokens gastados' })
-    // El pane solo se abre a petición, con /usage-panel.
+    await $.command.register({ name: 'usage-panel', description: 'Opens the usage limits panel with the tokens used' })
+    // The pane only opens on request, with /usage-panel.
     try {
       await setLimits($, (await $.session.usage())?.rateLimits)
     } catch {}
@@ -272,9 +272,9 @@ export const register: Register = (on) => {
   })
 
   on('command.run', { command: 'usage-panel' }, async ($) => {
-    await $.ui.open({ id: PANE, title: 'Uso y tokens' })
+    await $.ui.open({ id: PANE, title: 'Usage and tokens' })
     void refresh($, true)
-    return { text: 'Panel de uso abierto.' }
+    return { text: 'Usage panel opened.' }
   })
 
   on('session.measure', async ($, e, next) => {
@@ -297,7 +297,7 @@ export const register: Register = (on) => {
 
     return (
       <Box flexDirection="column">
-        {ls.length === 0 && <Text dimColor>Sin datos de límites todavía (llegan tras el primer turno).</Text>}
+        {ls.length === 0 && <Text dimColor>No limit data yet (it arrives after the first turn).</Text>}
         {WINDOWS.map((w) => {
           const l = ls.find((x) => x.kind === w.kind)
           const t = tk[w.kind]
@@ -313,17 +313,17 @@ export const register: Register = (on) => {
               {l?.resetsAt && <Text dimColor>{fmtReset(l.resetsAt, now)}</Text>}
               {t?.cap && (
                 <Text dimColor>
-                  Último tope: {new Date(t.cap.hit_ts * 1000).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' })}
+                  Last cap: {new Date(t.cap.hit_ts * 1000).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit' })}
                   {t.cap.plan ? ` · ${t.cap.plan}` : ''}
                 </Text>
               )}
               <Text dimColor>
-                {t ? `Gastados/Previstos: ${fmtTokens(t.raw)} / ${t.cap ? fmtTokens(t.cap.raw) : '—'}` : 'Gastados/Previstos: calculando…'}
+                {t ? `Used/Expected: ${fmtTokens(t.raw)} / ${t.cap ? fmtTokens(t.cap.raw) : '—'}` : 'Used/Expected: calculating…'}
               </Text>
             </Box>
           )
         })}
-        {at > 0 && <Text dimColor>Tokens a las {new Date(at).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}</Text>}
+        {at > 0 && <Text dimColor>Tokens as of {new Date(at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</Text>}
         {err && <Text color="red">{err}</Text>}
       </Box>
     )
